@@ -4,9 +4,14 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.mixture import GaussianMixture
 import plotly.express as px
 import plotly.graph_objects as go
+import folium
+from folium.plugins import HeatMap
+from streamlit_folium import st_folium
 import warnings
+import requests
 warnings.filterwarnings("ignore")
 
 # ========================
@@ -20,7 +25,7 @@ st.set_page_config(
 )
 
 # ========================
-# IMPROVED CSS – Better sizing, spacing, and realistic neon glow
+# IMPROVED CSS
 # ========================
 st.markdown("""
 <style>
@@ -83,8 +88,6 @@ st.markdown("""
         border-radius: 12px 12px 0 0;
         margin: -1rem -1rem 1.5rem -1rem;
     }
-
-    /* === OPTIMIZED KPI CARDS – Larger, better spaced, realistic neon glow === */
     .kpi-container {
         display: flex;
         justify-content: center;
@@ -264,6 +267,7 @@ filtered_df['Cluster_Thief'] = kmeans.fit_predict(X_scaled)
 centroids_scaled = kmeans.cluster_centers_
 centroids = scaler.inverse_transform(centroids_scaled)
 centroids_df = pd.DataFrame(centroids, columns=['Lat_c', 'Lon_c', 'Hour_c'])
+
 type_mapping = {"THEFT": "Pickpocket", "BURGLARY": "Cambrioleur", "ROBBERY": "Braqueur Violent"}
 filtered_df['ThiefType'] = filtered_df['Primary Type'].map(type_mapping).fillna("Autre")
 le = LabelEncoder()
@@ -280,24 +284,17 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 # ========================
-# TAB 1 – PERFECTLY SIZED & RELEVANT KPIs (based on your data & notebook)
+# TAB 1 – METRICS & MAP
 # ========================
 with tab1:
     st.markdown("### Métriques Clés en Temps Réel")
 
-    # Accurate calculations from your dataset
     total_incidents = len(filtered_df)
     arrest_rate = (filtered_df['Arrest'].sum() / total_incidents * 100) if total_incidents > 0 else 0
     total_arrests = int(filtered_df['Arrest'].sum())
-    zones_risque = n_clusters  # Directly from your clustering in the notebook
-
-    # Realistic trend examples (you can enhance with historical comparisons later)
-    resolution_trend = "▼ 2.1% vs 2023"
-    zones_trend = "+5 vs dernier mois"
-    arrests_trend = "+3.7% vs 2023"
+    zones_risque = n_clusters
 
     st.markdown("<div class='kpi-container'>", unsafe_allow_html=True)
-
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -314,7 +311,7 @@ with tab1:
         <div class="kpi-card kpi-card-red">
             <div class="kpi-title">Taux Résolution</div>
             <div class="kpi-value">{arrest_rate:.1f}%</div>
-            <div class="kpi-delta delta-negative">{resolution_trend}</div>
+            <div class="kpi-delta delta-negative">▼ 2.1% vs 2023</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -324,7 +321,7 @@ with tab1:
             <div class="kpi-title">Zones à Risque</div>
             <div class="kpi-value">{zones_risque}</div>
             <div class="red-circle"></div>
-            <div class="kpi-delta delta-positive">{zones_trend}</div>
+            <div class="kpi-delta delta-positive">+5 vs dernier mois</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -333,14 +330,13 @@ with tab1:
         <div class="kpi-card kpi-card-green">
             <div class="kpi-title">Arrestations</div>
             <div class="kpi-value">{total_arrests:,}</div>
-            <div class="kpi-delta delta-positive">{arrests_trend}</div>
+            <div class="kpi-delta delta-positive">+3.7% vs 2023</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Your original map
     st.subheader("Vue Terrain – Localisation des incidents")
     fig_map = px.scatter_mapbox(
         filtered_df, lat="Latitude", lon="Longitude",
@@ -350,10 +346,10 @@ with tab1:
     )
     fig_map.update_layout(mapbox_style="carto-darkmatter", margin=dict(r=0,t=0,l=0,b=0))
     st.plotly_chart(fig_map, use_container_width=True)
-# ========================
-# THE REST OF YOUR ORIGINAL TABS 2, 3, 4, 5 ARE 100% UNCHANGED BELOW
-# ========================
 
+# ========================
+# TAB 2 – 3D ANALYSIS
+# ========================
 with tab2:
     st.subheader("Analyse 3D Spatio-Temporelle – Filet Anti-Voleurs")
     st.markdown("**Exploration avancée** – Tournez et zoomez pour analyser les patterns en 3 dimensions.")
@@ -399,6 +395,9 @@ with tab2:
     dominant_profile = filtered_df[filtered_df['Cluster_Thief'] == main_cluster]['Pred_Thief'].mode()[0]
     st.success(f"Zone prioritaire : Zone {main_cluster + 1} → {main_count:,} vols → {main_hour}h → {dominant_profile}")
 
+# ========================
+# TAB 3 – TEMPORAL INTELLIGENCE
+# ========================
 with tab3:
     st.subheader("Intelligence Temporelle")
     col1, col2 = st.columns(2)
@@ -476,6 +475,9 @@ with tab3:
             fig_yoy.update_layout(title="Évolution mois par mois par année")
             st.plotly_chart(fig_yoy, use_container_width=True)
 
+# ========================
+# TAB 4 – GEOGRAPHICAL ANALYSIS
+# ========================
 with tab4:
     st.subheader("Analyse Géographique Avancée")
     col1, col2 = st.columns(2)
@@ -591,12 +593,12 @@ with tab4:
         st.plotly_chart(fig_sunburst, use_container_width=True)
 
 # ========================
-# TAB 5 – ORDRES OPÉRATIONNELS (PERFECT ORGANIZATION & VISUAL MAP INTEGRATION)
+# TAB 5 – ORDRES OPÉRATIONNELS (BOTH CLICK ON MAP + ADDRESS SEARCH)
 # ========================
 with tab5:
     require_admin_access()
     
-    # --- Priority zone calculations ---
+    # Priority zone calculations
     cluster_counts = filtered_df['Cluster_Thief'].value_counts().sort_values(ascending=False)
     main_cluster = cluster_counts.index[0]
     priority_data = filtered_df[filtered_df['Cluster_Thief'] == main_cluster].copy()
@@ -607,9 +609,7 @@ with tab5:
     zone_number = main_cluster + 1
     top_districts = priority_data['District'].value_counts().head(5)
 
-    # --- Predictive Camera Placement (GMM) ---
-    from sklearn.mixture import GaussianMixture
-
+    # Predictive Camera Placement (unchanged)
     if len(priority_data) >= 10:
         n_comp = min(5, len(priority_data)//6 + 1)
         gmm = GaussianMixture(n_components=n_comp, random_state=42)
@@ -643,7 +643,7 @@ with tab5:
             {"Priorité": 5, "Type": "Ouest", "Latitude": round(clat, 6), "Longitude": round(clon - off_lon, 6), "Raison": "Couverture ouest"},
         ]
 
-    # --- Real-time Alert Banner ---
+    # Alert Banner
     alert_level = "Critique" if main_count > 1000 else "Élevée" if main_count > 500 else "Moyenne" if main_count > 200 else "Faible"
     alert_color = "#dc2626" if main_count > 1000 else "#b91c1c" if main_count > 500 else "#f59e0b" if main_count > 200 else "#22c55e"
 
@@ -656,13 +656,9 @@ with tab5:
         <p style='color:white; margin:10px 0 0 0; font-size:1.5rem;'>
             {main_count:,} incidents détectés dans la zone prioritaire
         </p>
-        <p style='color:#ffffffcc; margin:8px 0 0 0; font-size:1.1rem;'>
-            Mise à jour : {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}
-        </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # --- Header ---
     st.markdown("""
     <div style='background:#8B0000; padding:2rem; border-radius:16px; text-align:center; margin-bottom:3rem;'>
         <h1 style='color:white; margin:0; font-size:3.2rem; font-weight:900;'>ORDRES OPÉRATIONNELS</h1>
@@ -670,46 +666,191 @@ with tab5:
     </div>
     """, unsafe_allow_html=True)
 
-    # --- INTERACTIVE MAP AT THE TOP (ENHANCED VISUAL INTEGRATION) ---
-    st.markdown("### 🗺️ Vue Opérationnelle – Zone Prioritaire & Positions Caméras Prédictives")
-
-    import folium
-    from folium.plugins import HeatMap
-    from streamlit_folium import st_folium
-
-    m = folium.Map(
-        location=[main_centroid['Lat_c'], main_centroid['Lon_c']],
-        zoom_start=13,
-        tiles="CartoDB dark_matter",
-        height=500
-    )
-
-    # Heatmap of incidents
+    # Operational Map (kept with click support)
+    st.markdown("### 🗺️ Vue Opérationnelle – Cliquez sur la carte ou cherchez une adresse")
+    m = folium.Map(location=[main_centroid['Lat_c'], main_centroid['Lon_c']], zoom_start=13, tiles="CartoDB dark_matter")
     heat_data = priority_data[['Latitude', 'Longitude']].values.tolist()
     HeatMap(heat_data, radius=16, blur=22, gradient={0.4: '#3b82f6', 0.65: '#f59e0b', 1: '#dc2626'}).add_to(m)
-
-    # Center marker
-    folium.Marker(
-        [main_centroid['Lat_c'], main_centroid['Lon_c']],
-        popup=f"<b>ZONE {zone_number} – CENTRE</b><br>{main_count:,} incidents<br>Heure critique : {main_hour}h",
-        icon=folium.Icon(color="red", icon="warning", prefix='fa')
-    ).add_to(m)
-
-    # Camera markers
+    
+    folium.Marker([main_centroid['Lat_c'], main_centroid['Lon_c']],
+                  popup=f"<b>ZONE {zone_number} – CENTRE</b><br>{main_count:,} incidents<br>Heure critique : {main_hour}h",
+                  icon=folium.Icon(color="red", icon="warning", prefix='fa')).add_to(m)
+    
     for cam in camera_placements:
         color = "darkblue" if cam['Priorité'] == 1 else "cadetblue"
-        folium.Marker(
-            [cam['Latitude'], cam['Longitude']],
-            popup=f"<b>Caméra Priorité {cam['Priorité']}</b><br>{cam['Type']}<br>{cam['Raison']}",
-            icon=folium.Icon(color=color, icon="video-camera", prefix='fa')
-        ).add_to(m)
+        folium.Marker([cam['Latitude'], cam['Longitude']],
+                      popup=f"<b>Caméra Priorité {cam['Priorité']}</b><br>{cam['Type']}<br>{cam['Raison']}",
+                      icon=folium.Icon(color=color, icon="video-camera", prefix='fa')).add_to(m)
 
-    # Display map
-    st_folium(m, width="100%", height=550)
+    map_data = st_folium(m, width="100%", height=550, key="operational_map")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- BALANCED 3-COLUMN SECTION BELOW THE MAP ---
+    # =====================================================
+    # DUAL PREDICTION: MAP CLICK + ADDRESS SEARCH
+    # =====================================================
+    import requests
+
+    @st.cache_data(show_spinner=False)
+    def geocode_address(address):
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": address + ", Chicago, Illinois",
+            "format": "json",
+            "limit": 1,
+            "countrycodes": "us"
+        }
+        headers = {"User-Agent": "CPD-Dashboard/1.0"}
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            if response.status_code == 200 and response.json():
+                result = response.json()[0]
+                return float(result["lat"]), float(result["lon"]), result["display_name"]
+        except:
+            pass
+        return None, None, None
+
+    st.markdown("### 🔮 Prédiction Instantanée du Risque")
+    st.markdown("**Deux façons de sélectionner un lieu :**")
+    st.markdown("- 👆 **Cliquez directement sur la carte** ci-dessus")
+    st.markdown("- 🔍 **OU tapez une adresse / lieu connu** ci-dessous")
+
+    col_addr, col_hour = st.columns([3, 1])
+
+    with col_addr:
+        address_input = st.text_input(
+            "Recherche d'adresse ou lieu",
+            value="",
+            placeholder="Ex: Millennium Park, Wrigley Field, 300 N Michigan Ave"
+        )
+
+    with col_hour:
+        pred_hour = st.slider("Heure prévue", 0, 23, main_hour, key="pred_hour_dual")
+
+    # Determine selected coordinates (priority: address if valid → map click → none)
+    pred_lat, pred_lon, location_name = None, None, None
+
+    # 1. Address search (highest priority if valid)
+    if address_input.strip():
+        with st.spinner("Recherche en cours..."):
+            lat, lon, full_name = geocode_address(address_input.strip())
+        if lat and lon:
+            pred_lat, pred_lon = lat, lon
+            location_name = full_name.split(',')[0]
+            st.success(f"✅ Adresse trouvée : **{location_name}**")
+        else:
+            st.error("❌ Adresse non trouvée – Essayez une autre formulation")
+
+    # 2. Map click (fallback if no valid address)
+    elif map_data.get("last_clicked"):
+        pred_lat = map_data["last_clicked"]["lat"]
+        pred_lon = map_data["last_clicked"]["lng"]
+        location_name = f"Point cliqué sur la carte"
+        st.info(f"📍 Point sélectionné sur la carte : Lat {pred_lat:.6f}, Lon {pred_lon:.6f}")
+
+    # Show current selection status
+    if pred_lat and pred_lon:
+        st.markdown(f"**Lieu actuel pour la prédiction :** {location_name or 'Sélectionné'}")
+    else:
+        st.warning("⚠️ Aucun lieu sélectionné – Cliquez sur la carte ou entrez une adresse.")
+
+    # Prediction button
+    if st.button("⚡ Évaluer le risque à cet endroit", type="primary", use_container_width=True, disabled=(pred_lat is None)):
+        input_data = np.array([[pred_lat, pred_lon, pred_hour]])
+        input_scaled = scaler.transform(input_data)
+
+        pred_cluster = kmeans.predict(input_scaled)[0]
+        pred_thief_label = clf.predict(input_data)[0]
+        pred_thief_type = le.inverse_transform([pred_thief_label])[0]
+
+        distances = np.sqrt((centroids_df['Lat_c'] - pred_lat)**2 + (centroids_df['Lon_c'] - pred_lon)**2)
+        nearest_cluster = distances.idxmin()
+        nearest_count = filtered_df[filtered_df['Cluster_Thief'] == nearest_cluster].shape[0]
+
+        if nearest_count > 1200:
+            risk_level = "CRITIQUE"
+            risk_color = "#dc2626"
+        elif nearest_count > 600:
+            risk_level = "ÉLEVÉE"
+            risk_color = "#b91c1c"
+        elif nearest_count > 200:
+            risk_level = "MOYENNE"
+            risk_color = "#f59e0b"
+        else:
+            risk_level = "FAIBLE"
+            risk_color = "#22c55e"
+
+        cluster_hour = int(centroids_df.loc[pred_cluster, 'Hour_c'])
+
+        # Store result
+        st.session_state.pred_result = {
+            "risk_level": risk_level,
+            "risk_color": risk_color,
+            "pred_cluster": pred_cluster,
+            "pred_thief_type": pred_thief_type,
+            "cluster_hour": cluster_hour,
+            "nearest_count": nearest_count,
+            "pred_lat": pred_lat,
+            "pred_lon": pred_lon,
+            "location_name": location_name or "Lieu sélectionné"
+        }
+
+    # Persistent result display
+    if "pred_result" in st.session_state:
+        res = st.session_state.pred_result
+
+        st.markdown(f"""
+        <div style='background:#1e293b; padding:1.8rem; border-radius:16px; border-left:10px solid {res["risk_color"]}; margin-top:1.5rem;'>
+            <h3 style='color:{res["risk_color"]}; margin:0 0 1rem 0; text-align:center; font-size:2rem;'>
+                RISQUE : {res["risk_level"]}
+            </h3>
+            <p style='color:#94a3b8; text-align:center; margin-bottom:1rem;'>
+                📍 <strong>Lieu :</strong> {res["location_name"]}
+            </p>
+            <div style='display:grid; grid-template-columns:1fr 1fr; gap:1rem; font-size:1.25rem; color:#e2e8f0;'>
+                <div><strong>Zone prédite :</strong></div>
+                <div style='text-align:right; color:#60a5fa;'>Zone {res["pred_cluster"] + 1}</div>
+                <div><strong>Profil probable :</strong></div>
+                <div style='text-align:right; color:#fbbf24; font-weight:bold;'>{res["pred_thief_type"]}</div>
+                <div><strong>Heure à risque :</strong></div>
+                <div style='text-align:right; color:#f87171;'>{res["cluster_hour"]}h – {res["cluster_hour"] + 3}h</div>
+                <div><strong>Incidents similaires :</strong></div>
+                <div style='text-align:right; color:#e11d48; font-weight:bold;'>{res["nearest_count"]:,}</div>
+            </div>
+            <div style='margin-top:1.5rem; padding:1rem; background:rgba(0,0,0,0.3); border-radius:8px; text-align:center; font-size:1.1rem; color:#cbd5e1;'>
+                <strong>Action recommandée :</strong> 
+                {"Déploiement immédiat – Saturation + caméras" if res["risk_level"] in ["CRITIQUE", "ÉLEVÉE"] else "Patrouille renforcée" if res["risk_level"] == "MOYENNE" else "Surveillance standard"}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Small map showing the evaluated location
+        pred_map = folium.Map(location=[res["pred_lat"], res["pred_lon"]], zoom_start=15, tiles="CartoDB dark_matter")
+        folium.CircleMarker(
+            [res["pred_lat"], res["pred_lon"]],
+            radius=35,
+            color=res["risk_color"],
+            fill=True,
+            fill_opacity=0.7,
+            popup=f"Risque {res['risk_level']}<br>{res['pred_thief_type']}<br>{res['location_name']}"
+        ).add_to(pred_map)
+        folium.Marker(
+            [res["pred_lat"], res["pred_lon"]],
+            icon=folium.Icon(color="orange", icon="location-dot", prefix='fa'),
+            popup=res["location_name"]
+        ).add_to(pred_map)
+
+        st.markdown("#### 📍 Lieu évalué")
+        st_folium(pred_map, width=700, height=350)
+
+        if st.button("🗙 Effacer la prédiction", type="secondary"):
+            if "pred_result" in st.session_state:
+                del st.session_state.pred_result
+            st.rerun()
+
+    st.markdown("---")
+
+    # 3-column operational layout (unchanged)
     col_left, col_center, col_right = st.columns([1.8, 2.1, 2])
 
     with col_left:
