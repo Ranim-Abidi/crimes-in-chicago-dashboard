@@ -7,7 +7,7 @@
 ---
 
 ## 🧠 About the Project
-This project explores the application of **Machine Learning** techniques to analyze and predict crime patterns in the city of Chicago. Conducted over 14 weeks under the supervision of **Mr. Mustapha Trabelsi**, it aims to support data-driven decision-making in public safety and urban management.
+This project explores the application of **Machine Learning** techniques to analyze and predict crime patterns in the city of Chicago. It aims to support data-driven decision-making in public safety and urban management.
 
 The study includes:
 
